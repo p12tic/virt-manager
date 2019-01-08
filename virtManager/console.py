@@ -553,22 +553,26 @@ class vmmConsolePages(vmmGObjectUI):
     def _leave_fullscreen(self, ignore=None):
         self._change_fullscreen(False)
 
+    def _change_menu_toolbar_hidden(self, hidden):
+        if hidden:
+            self.widget("toolbar-box").hide()
+            self.widget("details-menubar").hide()
+        else:
+            if self.widget("details-menu-view-toolbar").get_active():
+                self.widget("toolbar-box").show()
+            self.widget("details-menubar").show()
+
     def _change_fullscreen(self, do_fullscreen):
         self.widget("control-fullscreen").set_active(do_fullscreen)
 
         if do_fullscreen:
             self.topwin.fullscreen()
             self._overlay_toolbar_fullscreen.timed_revealer.force_reveal(True)
-            self.widget("toolbar-box").hide()
-            self.widget("details-menubar").hide()
         else:
             self._overlay_toolbar_fullscreen.timed_revealer.force_reveal(False)
             self.topwin.unfullscreen()
 
-            if self.widget("details-menu-view-toolbar").get_active():
-                self.widget("toolbar-box").show()
-            self.widget("details-menubar").show()
-
+        self._change_menu_toolbar_hidden(do_fullscreen)
         self._sync_scaling_with_display()
 
 
