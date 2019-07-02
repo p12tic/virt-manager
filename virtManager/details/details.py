@@ -587,7 +587,6 @@ class vmmDetails(vmmGObjectUI):
         self._xmleditor.cleanup()
         self._xmleditor = None
 
-
     ##########################
     # Initialization helpers #
     ##########################

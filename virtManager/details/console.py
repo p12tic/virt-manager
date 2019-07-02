@@ -126,27 +126,30 @@ def build_keycombo_menu(on_send_key_fn):
 
 
 class vmmOverlayToolbar:
-    def __init__(self, on_leave_fn, on_send_key_fn):
+    def __init__(self, name, tooltip_text, accessible_name, send_key_accessible_name,
+                 on_leave_fn, on_send_key_fn):
         self._send_key_button = None
         self._keycombo_menu = None
         self._toolbar = None
 
         self.timed_revealer = None
-        self._init_ui(on_leave_fn, on_send_key_fn)
+        self._init_ui(name, tooltip_text, accessible_name, send_key_accessible_name,
+                      on_leave_fn, on_send_key_fn)
 
-    def _init_ui(self, on_leave_fn, on_send_key_fn):
+    def _init_ui(self, name, tooltip_text, accessible_name, send_key_accessible_name,
+                 on_leave_fn, on_send_key_fn):
         self._keycombo_menu = build_keycombo_menu(on_send_key_fn)
 
         self._toolbar = Gtk.Toolbar()
         self._toolbar.set_show_arrow(False)
         self._toolbar.set_style(Gtk.ToolbarStyle.BOTH_HORIZ)
-        self._toolbar.get_accessible().set_name("Fullscreen Toolbar")
+        self._toolbar.get_accessible().set_name(name)
 
         # Exit button
         button = Gtk.ToolButton.new_from_stock(Gtk.STOCK_LEAVE_FULLSCREEN)
-        button.set_tooltip_text(_("Leave fullscreen"))
+        button.set_tooltip_text(tooltip_text)
         button.show()
-        button.get_accessible().set_name("Fullscreen Exit")
+        button.get_accessible().set_name(accessible_name)
         self._toolbar.add(button)
         button.connect("clicked", on_leave_fn)
 
@@ -157,7 +160,7 @@ class vmmOverlayToolbar:
         self._send_key_button.show_all()
         self._send_key_button.connect("clicked",
                 self._on_send_key_button_clicked_cb)
-        self._send_key_button.get_accessible().set_name("Fullscreen Send Key")
+        self._send_key_button.get_accessible().set_name(send_key_accessible_name)
         self._toolbar.add(self._send_key_button)
 
         self.timed_revealer = _TimedRevealer(self._toolbar)
@@ -207,7 +210,21 @@ class vmmConsolePages(vmmGObjectUI):
         self._keycombo_menu = build_keycombo_menu(self._do_send_key)
 
         self._overlay_toolbar_fullscreen = vmmOverlayToolbar(
+            name="Fullscreen Toolbar",
+            tooltip_text=_("Leave fullscreen"),
+            accessible_name="Fullscreen Exit",
+            send_key_accessible_name="Fullscreen Send Key",
             on_leave_fn=self._leave_fullscreen,
+            on_send_key_fn=self._do_send_key)
+        self.widget("console-overlay").add_overlay(
+                self._overlay_toolbar_fullscreen.timed_revealer.get_overlay_widget())
+
+        self._overlay_toolbar_decorations = vmmOverlayToolbar(
+            name="Hidden Decorations Toolbar",
+            tooltip_text=_("Show decorations"),
+            accessible_name="Show Decorations",
+            send_key_accessible_name="Hidden Decorations Send Key",
+            on_leave_fn=self._leave_hidden_decorations,
             on_send_key_fn=self._do_send_key)
         self.widget("console-overlay").add_overlay(
                 self._overlay_toolbar_fullscreen.timed_revealer.get_overlay_widget())
@@ -251,6 +268,7 @@ class vmmConsolePages(vmmGObjectUI):
         self._viewer = None
 
         self._overlay_toolbar_fullscreen.cleanup()
+        self._overlay_toolbar_decorations.cleanup()
 
         for serial in self._serial_consoles:
             serial.cleanup()
@@ -260,7 +278,6 @@ class vmmConsolePages(vmmGObjectUI):
     ##########################
     # Initialization helpers #
     ##########################
-
 
     def _init_menus(self):
         # Serial list menu
@@ -524,6 +541,8 @@ class vmmConsolePages(vmmGObjectUI):
         self.widget("control-fullscreen").set_sensitive(allow_fullscreen)
         self.widget("details-menu-view-fullscreen").set_sensitive(
             allow_fullscreen)
+        self.widget("details-menu-view-hide-decorations").set_sensitive(
+            allow_fullscreen)
 
     def _leave_fullscreen(self, ignore=None):
         self._change_fullscreen(False)
@@ -539,6 +558,8 @@ class vmmConsolePages(vmmGObjectUI):
 
     def _change_fullscreen(self, do_fullscreen):
         self.widget("control-fullscreen").set_active(do_fullscreen)
+        self.widget('details-menu-view-hide-decorations').set_sensitive(
+            not do_fullscreen)
 
         if do_fullscreen:
             self.topwin.fullscreen()
@@ -550,6 +571,24 @@ class vmmConsolePages(vmmGObjectUI):
         self._change_menu_toolbar_hidden(do_fullscreen)
         self._sync_scaling_with_display()
 
+    def _leave_hidden_decorations(self, ignore=None):
+        self._change_hide_decorations(False)
+
+    def _change_hide_decorations(self, do_hide):
+        self.widget('details-menu-view-fullscreen').set_sensitive(not do_hide)
+        # this function may be called from other code, so ensure that widget
+        # state corresponds to the actual situation
+        self.widget('details-menu-view-hide-decorations').set_active(do_hide)
+
+        if do_hide:
+            self.topwin.get_window().set_decorations(0)
+            self._overlay_toolbar_decorations.timed_revealer.force_reveal(True)
+        else:
+            self._overlay_toolbar_decorations.timed_revealer.force_reveal(False)
+            self.topwin.get_window().set_decorations(Gdk.WMDecoration.ALL)
+
+        self._change_menu_toolbar_hidden(do_hide)
+        self._sync_scaling_with_display()
 
     ##########################
     # State tracking methods #
@@ -571,6 +610,7 @@ class vmmConsolePages(vmmGObjectUI):
         self._viewer = None
 
         self._leave_fullscreen()
+        self._leave_hidden_decorations()
 
         for serial in self._serial_consoles:
             serial.close()
@@ -672,6 +712,7 @@ class vmmConsolePages(vmmGObjectUI):
         for c in self._keycombo_menu.get_children():
             c.set_sensitive(can_sendkey)
         self._overlay_toolbar_fullscreen.set_sensitive(can_sendkey)
+        self._overlay_toolbar_decorations.set_sensitive(can_sendkey)
 
         self._refresh_can_fullscreen()
 
@@ -1040,6 +1081,10 @@ class vmmConsolePages(vmmGObjectUI):
     def details_toggle_fullscreen(self, src):
         do_fullscreen = src.get_active()
         self._change_fullscreen(do_fullscreen)
+
+    def details_toggle_hide_decorations(self, src):
+        do_hide = src.get_active()
+        self._change_hide_decorations(do_hide)
 
     def details_auth_login(self, ignore):
         self._set_credentials()

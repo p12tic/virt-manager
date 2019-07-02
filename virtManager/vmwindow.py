@@ -122,6 +122,8 @@ class vmmVMWindow(vmmGObjectUI):
             # Listeners stored in vmmConsolePages
             "on_details_menu_view_fullscreen_activate": (
                 self.console.details_toggle_fullscreen),
+            "on_details_menu_view_hide_decorations_activate": (
+                self.console.details_toggle_hide_decorations),
             "on_details_menu_view_size_to_vm_activate": (
                 self.console.details_size_to_vm),
             "on_details_menu_view_scale_always_toggled": (
@@ -219,6 +221,10 @@ class vmmVMWindow(vmmGObjectUI):
 
     def _close(self):
         fs = self.widget("details-menu-view-fullscreen")
+        if fs.get_active():
+            fs.set_active(False)
+
+        fs = self.widget("details-menu-view-hide-decorations")
         if fs.get_active():
             fs.set_active(False)
 
