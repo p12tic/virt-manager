@@ -37,14 +37,17 @@ class _TimedRevealer(vmmGObject):
 
         self._revealer = Gtk.Revealer()
         self._revealer.add(toolbar)
+        self._revealer.set_halign(Gtk.Align.CENTER)
+        self._revealer.set_valign(Gtk.Align.START)
+        self._revealer.show_all()
 
-        # Adding the revealer to the eventbox seems to ensure the
-        # eventbox always has 1 invisible pixel showing at the top of the
-        # screen, which we can use to grab the pointer event to show
-        # the hidden toolbar.
+        # We use a separate eventbox to trigger the revealer. The eventbox has
+        # height of at least 1 pixel and width no smaller than the width of
+        # the revealer. Size larger than that can be requested via
+        # set_size_request(). This way the eventbox may be much wider than the
+        # revealer while capturing event only at the top of the window.
 
         self._ebox = Gtk.EventBox()
-        self._ebox.add(self._revealer)
         self._ebox.set_halign(Gtk.Align.CENTER)
         self._ebox.set_valign(Gtk.Align.START)
         self._ebox.show_all()
@@ -97,9 +100,16 @@ class _TimedRevealer(vmmGObject):
         self._in_fullscreen = val
         self._revealer.set_reveal_child(val)
         self._schedule_unreveal_timeout(2000)
+        self.set_size_request(0, 0)
 
-    def get_overlay_widget(self):
-        return self._ebox
+    def set_size_request(self, min_width, min_height):
+        if self._in_fullscreen:
+            revealer_w, revealer_h = self._revealer.get_size_request()
+            self._ebox.set_size_request(max(revealer_w, min_width),
+                                        max(revealer_h, min_height))
+
+    def get_overlay_widgets(self):
+        return [self._ebox, self._revealer]
 
 
 def build_keycombo_menu(on_send_key_fn):
@@ -216,8 +226,8 @@ class vmmConsolePages(vmmGObjectUI):
             send_key_accessible_name="Fullscreen Send Key",
             on_leave_fn=self._leave_fullscreen,
             on_send_key_fn=self._do_send_key)
-        self.widget("console-overlay").add_overlay(
-                self._overlay_toolbar_fullscreen.timed_revealer.get_overlay_widget())
+
+        overlays = self._overlay_toolbar_fullscreen.timed_revealer.get_overlay_widgets()
 
         self._overlay_toolbar_decorations = vmmOverlayToolbar(
             name="Hidden Decorations Toolbar",
@@ -226,8 +236,11 @@ class vmmConsolePages(vmmGObjectUI):
             send_key_accessible_name="Hidden Decorations Send Key",
             on_leave_fn=self._leave_hidden_decorations,
             on_send_key_fn=self._do_send_key)
-        self.widget("console-overlay").add_overlay(
-                self._overlay_toolbar_fullscreen.timed_revealer.get_overlay_widget())
+
+        overlays += self._overlay_toolbar_decorations.timed_revealer.get_overlay_widgets()
+
+        for o in overlays:
+            self.widget("console-overlay").add_overlay(o)
 
         # Make viewer widget background always be black
         black = Gdk.Color(0, 0, 0)
@@ -580,11 +593,13 @@ class vmmConsolePages(vmmGObjectUI):
         # state corresponds to the actual situation
         self.widget('details-menu-view-hide-decorations').set_active(do_hide)
 
+        revealer = self._overlay_toolbar_decorations.timed_revealer
         if do_hide:
             self.topwin.get_window().set_decorations(0)
-            self._overlay_toolbar_decorations.timed_revealer.force_reveal(True)
+            revealer.force_reveal(True)
+            revealer.set_size_request(self.topwin.get_size()[0] - 100, 4)
         else:
-            self._overlay_toolbar_decorations.timed_revealer.force_reveal(False)
+            revealer.force_reveal(False)
             self.topwin.get_window().set_decorations(Gdk.WMDecoration.ALL)
 
         self._change_menu_toolbar_hidden(do_hide)
